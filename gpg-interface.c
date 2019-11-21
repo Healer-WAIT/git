@@ -119,7 +119,8 @@ static void replace_cstring(const char **field, const char *line,
 static void parse_gpg_output(struct signature_check *sigc)
 {
 	const char *buf = sigc->gpg_status;
-	const char *line, *next;
+	const char *line, *next, *limit;
+	const char **field;
 	int i, j;
 	int seen_exclusive_status = 0;
 
@@ -160,18 +161,27 @@ static void parse_gpg_output(struct signature_check *sigc)
 					next = strchrnul(line, ' ');
 					replace_cstring(&sigc->fingerprint, line, next);
 
-					/* Skip interim fields */
+					/*
+					 * Skip interim fields.  The search is
+					 * limited to the same line since only
+					 * OpenPGP signatures has a field with
+					 * the primary fingerprint.
+					 */
+					limit = strchrnul(line, '\n');
 					for (j = 9; j > 0; j--) {
-						if (!*next)
+						if (!*next || limit <= next)
 							break;
 						line = next + 1;
 						next = strchrnul(line, ' ');
 					}
 
-					next = strchrnul(line, '\n');
-					free(sigc->primary_key_fingerprint);
-					replace_cstring(&sigc->primary_key_fingerprint,
-							line, next);
+					field = &sigc->primary_key_fingerprint;
+					if (!j) {
+						next = strchrnul(line, '\n');
+						replace_cstring(field, line, next);
+					} else {
+						replace_cstring(field, NULL, NULL);
+					}
 				}
 
 				break;
