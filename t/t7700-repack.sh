@@ -18,14 +18,13 @@ test_expect_success 'objects in packs marked .keep are not repacked' '
 	git commit -m initial_commit &&
 	# Create two packs
 	# The first pack will contain all of the objects except one
-	git rev-list --objects --all | grep -v file2 |
-		git pack-objects pack &&
+	git rev-list --objects --all >objs &&
+	grep -v file2 objs | git pack-objects pack &&
 	# The second pack will contain the excluded object
-	packsha1=$(git rev-list --objects --all | grep file2 |
-		git pack-objects pack) &&
+	packsha1=$(grep file2 objs | git pack-objects pack) &&
 	>pack-$packsha1.keep &&
-	objsha1=$(git verify-pack -v pack-$packsha1.idx | head -n 1 |
-		sed -e "s/^\([0-9a-f]\{40\}\).*/\1/") &&
+	git verify-pack -v pack-$packsha1.idx >packlist &&
+	objsha1=$(head -n 1 packlist | sed -e "s/^\([0-9a-f]\{40\}\).*/\1/") &&
 	mv pack-* .git/objects/pack/ &&
 	git repack -A -d -l &&
 	git prune-packed &&
@@ -33,7 +32,8 @@ test_expect_success 'objects in packs marked .keep are not repacked' '
 	do
 		idx=$(basename $p)
 		test "pack-$packsha1.idx" = "$idx" && continue
-		if git verify-pack -v $p | egrep "^$objsha1"
+		git verify-pack -v $p >packlist || return $?
+		if egrep "^$objsha1" packlist
 		then
 			found_duplicate_object=1
 			echo "DUPLICATE OBJECT FOUND"
@@ -51,7 +51,8 @@ test_expect_success 'writing bitmaps via command-line can duplicate .keep object
 	do
 		idx=$(basename $p)
 		test "pack-$packsha1.idx" = "$idx" && continue
-		if git verify-pack -v $p | egrep "^$objsha1"
+		git verify-pack -v $p >packlist || return $?
+		if egrep "^$objsha1" packlist
 		then
 			found_duplicate_object=1
 			echo "DUPLICATE OBJECT FOUND"
@@ -69,7 +70,8 @@ test_expect_success 'writing bitmaps via config can duplicate .keep objects' '
 	do
 		idx=$(basename $p)
 		test "pack-$packsha1.idx" = "$idx" && continue
-		if git verify-pack -v $p | egrep "^$objsha1"
+		git verify-pack -v $p >packlist || return $?
+		if egrep "^$objsha1" packlist
 		then
 			found_duplicate_object=1
 			echo "DUPLICATE OBJECT FOUND"
@@ -91,7 +93,8 @@ test_expect_success 'loose objects in alternate ODB are not repacked' '
 	git prune-packed &&
 	for p in .git/objects/pack/*.idx
 	do
-		if git verify-pack -v $p | egrep "^$objsha1"
+		git verify-pack -v $p >packlist || return $?
+		if egrep "^$objsha1" packlist
 		then
 			found_duplicate_object=1
 			echo "DUPLICATE OBJECT FOUND"
@@ -109,15 +112,18 @@ test_expect_success 'packed obs in alt ODB are repacked even when local repo is 
 	test_path_is_file "$myidx" &&
 	for p in alt_objects/pack/*.idx
 	do
-		git verify-pack -v $p | sed -n -e "/^[0-9a-f]\{40\}/p"
-	done | while read sha1 rest
+		git verify-pack -v $p >packlist || return $?
+		sed -n -e "/^[0-9a-f]\{40\}/p"
+	done >packs &&
+	git verify-pack -v $myidx >mypacklist &&
+	while read sha1 rest
 	do
-		if ! ( git verify-pack -v $myidx | grep "^$sha1" )
+		if ! grep "^$sha1" mypacklist
 		then
 			echo "Missing object in local pack: $sha1"
 			return 1
 		fi
-	done
+	done <packs
 '
 
 test_expect_success 'packed obs in alt ODB are repacked when local repo has packs' '
@@ -132,15 +138,18 @@ test_expect_success 'packed obs in alt ODB are repacked when local repo has pack
 	test_path_is_file "$myidx" &&
 	for p in alt_objects/pack/*.idx
 	do
-		git verify-pack -v $p | sed -n -e "/^[0-9a-f]\{40\}/p"
-	done | while read sha1 rest
+		git verify-pack -v $p >packlist || return $?
+		sed -n -e "/^[0-9a-f]\{40\}/p" packlist
+	done >packs &&
+	git verify-pack -v $myidx >mypacklist &&
+	while read sha1 rest
 	do
-		if ! ( git verify-pack -v $myidx | grep "^$sha1" )
+		if ! grep "^$sha1" mypacklist
 		then
 			echo "Missing object in local pack: $sha1"
 			return 1
 		fi
-	done
+	done <packs
 '
 
 test_expect_success 'packed obs in alternate ODB kept pack are repacked' '
@@ -160,15 +169,18 @@ test_expect_success 'packed obs in alternate ODB kept pack are repacked' '
 	test_path_is_file "$myidx" &&
 	for p in alt_objects/pack/*.idx
 	do
-		git verify-pack -v $p | sed -n -e "/^[0-9a-f]\{40\}/p"
-	done | while read sha1 rest
+		git verify-pack -v $p >packlist || return $?
+		sed -n -e "/^[0-9a-f]\{40\}/p" packlist
+	done >packs &&
+	git verify-pack -v $myidx >mypacklist &&
+	while read sha1 rest
 	do
-		if ! ( git verify-pack -v $myidx | grep "^$sha1" )
+		if ! grep "^$sha1" mypacklist
 		then
 			echo "Missing object in local pack: $sha1"
 			return 1
 		fi
-	done
+	done <packs
 '
 
 test_expect_success 'packed unreachable obs in alternate ODB are not loosened' '
@@ -184,8 +196,8 @@ test_expect_success 'packed unreachable obs in alternate ODB are not loosened' '
 	    --unpack-unreachable </dev/null pack &&
 	rm -f .git/objects/pack/* &&
 	mv pack-* .git/objects/pack/ &&
-	test 0 = $(git verify-pack -v -- .git/objects/pack/*.idx |
-		egrep "^$csha1 " | sort | uniq | wc -l) &&
+	git verify-pack -v -- .git/objects/pack/*.idx >packlist &&
+	! egrep "^$csha1 " packlist &&
 	echo >.git/objects/info/alternates &&
 	test_must_fail git show $csha1
 '
@@ -201,8 +213,8 @@ test_expect_success 'local packed unreachable obs that exist in alternate ODB ar
 	    --unpack-unreachable </dev/null pack &&
 	rm -f .git/objects/pack/* &&
 	mv pack-* .git/objects/pack/ &&
-	test 0 = $(git verify-pack -v -- .git/objects/pack/*.idx |
-		egrep "^$csha1 " | sort | uniq | wc -l) &&
+	git verify-pack -v -- .git/objects/pack/*.idx >packlist &&
+	! egrep "^$csha1 " &&
 	echo >.git/objects/info/alternates &&
 	test_must_fail git show $csha1
 '
