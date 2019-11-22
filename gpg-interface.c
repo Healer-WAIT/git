@@ -105,7 +105,7 @@ static struct {
 	{ 0, "VALIDSIG ", GPG_STATUS_FINGERPRINT },
 };
 
-static void replace_cstring(const char **field, const char *line,
+static void replace_cstring(char **field, const char *line,
 			    const char *next)
 {
 	free(*field);
@@ -120,7 +120,6 @@ static void parse_gpg_output(struct signature_check *sigc)
 {
 	const char *buf = sigc->gpg_status;
 	const char *line, *next, *limit;
-	const char **field;
 	int i, j;
 	int seen_exclusive_status = 0;
 
@@ -158,6 +157,8 @@ static void parse_gpg_output(struct signature_check *sigc)
 				}
 				/* Do we have fingerprint? */
 				if (sigcheck_gpg_status[i].flags & GPG_STATUS_FINGERPRINT) {
+					char **field;
+
 					next = strchrnul(line, ' ');
 					replace_cstring(&sigc->fingerprint, line, next);
 
