@@ -178,10 +178,11 @@ test_wrapper_ () {
 	export test_prereq
 	if ! test_skip "$@"
 	then
-		base=$(basename "$0" .sh)
-		echo "$test_count" >>"$perf_results_dir"/$base.subtests
-		echo "$1" >"$perf_results_dir"/$base.$test_count.descr
 		base="$perf_results_dir"/"$PERF_RESULTS_PREFIX$(basename "$0" .sh)"."$test_count"
+		rm -f "$base".*
+		no_prefix_base="$perf_results_dir"/$(basename "$0" .sh)
+		echo "$test_count" >>$no_prefix_base.subtests
+		echo "$1" >$no_prefix_base.$test_count.descr
 		"$test_wrapper_func_" "$@"
 	fi
 
