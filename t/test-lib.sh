@@ -1101,6 +1101,8 @@ test_atexit_handler () {
 	# sure that the registered cleanup commands are run only once.
 	test : != "$test_atexit_cleanup" || return 0
 
+	test_clear_watchman
+
 	setup_malloc_check
 	test_eval_ "$test_atexit_cleanup"
 	test_atexit_cleanup=:

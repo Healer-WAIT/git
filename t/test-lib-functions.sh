@@ -1488,3 +1488,18 @@ test_set_port () {
 	port=$(($port + ${GIT_TEST_STRESS_JOB_NR:-0}))
 	eval $var=$port
 }
+
+test_clear_watchman () {
+	if test $GIT_TEST_FSMONITOR -ne ""
+	then
+		watchman watch-list |
+			grep "$TRASH_DIRECTORY" |
+			sed "s/\t\"//g" |
+			sed "s/\",//g" >repo-list
+
+		for repo in $(cat repo-list)
+		do
+			watchman watch-del "$repo"
+		done
+	fi
+}
